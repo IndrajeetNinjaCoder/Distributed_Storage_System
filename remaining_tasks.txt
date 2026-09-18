@@ -1,0 +1,23 @@
+1. Implement real replication on upload
+Right now replicaLocations records 3 target nodes, but only the primary actually receives bytes when a client PUTs a chunk. Update the Storage Node's PUT endpoint so that after saving the chunk locally, it forwards (replicates) the same bytes to the other nodes in the replica list, called via RestTemplate/WebClient. This is the single most important remaining piece — it's what makes this an actual distributed storage system rather than just placement logic.
+
+2. Add checksums for chunk integrity
+When a chunk is stored (on the primary, before or after replicating), compute a SHA-256 checksum of the bytes and save it to the Chunk entity. On download, after fetching a chunk, verify its checksum matches — this proves you can detect corruption, a genuine talking point for interviews.
+
+3. Build a real upload/download client script
+Test the full round trip with a real file instead of manual byte pastes in Postman. Write a small script (Python or Java) that reads a real image/video from disk, calls POST /files, splits the file into chunk-sized pieces, PUTs each to its assigned node, calls /complete, then reverses the process on download and reassembles the original file. Verify the reassembled file matches the original byte-for-byte.
+
+4. Build the repair job for dead nodes
+Implement a Spring @Scheduled job in Metadata Service that periodically checks each chunk's replicaLocations against currently active Eureka nodes. If a node is DEAD, pick a new target via the hash ring, copy the chunk's bytes from a surviving replica to the new node, and update replicaLocations. Test it by running `docker stop storage-node-2` and confirming the job detects and repairs affected chunks.
+
+5. Add presigned URLs
+Implement presigned URL generation (HMAC-SHA256 signed, time-limited) for chunk access, so a client doesn't need direct trust with storage nodes. Add signature + expiry verification on the Storage Node's GET endpoint before it serves bytes.
+
+6. Docker Compose for the full cluster
+Write a docker-compose.yml that starts Eureka Server, Metadata Service, Postgres, and all 4 Storage Node instances with one command (`docker compose up`), replacing your current manual multi-terminal/multi-docker-run workflow. This is also expected groundwork before load testing.
+
+7. Load testing
+Use k6 (or JMeter) to script concurrent uploads/downloads against the cluster. Capture throughput and latency numbers, then specifically test resilience: kill a node mid-test and confirm the system keeps serving reads via other replicas. Record the numbers — this becomes a real, defensible section of your README.
+
+8. Unit/integration tests for placement and repair
+Add JUnit + Mockito tests for the consistent hash ring logic (placement correctness, distinct replicas, ring rebuild behavior) and the repair job. This is lower effort than it sounds since the hash ring is a pure, easily-testable class, and it's a strong signal in an interview that you validated your own algorithm.

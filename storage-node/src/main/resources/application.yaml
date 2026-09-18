@@ -1,0 +1,17 @@
+server:
+  port: ${SERVER_PORT:9001}
+
+spring:
+  application:
+    name: storage-node
+
+eureka:
+  client:
+    service-url:
+      defaultZone: ${EUREKA_URL:http://localhost:8761/eureka/}
+  instance:
+    instance-id: ${spring.application.name}:${SERVER_PORT:9001}
+    hostname: ${EUREKA_INSTANCE_HOSTNAME:localhost}
+
+storage:
+  base-path: ./data/${SERVER_PORT:9001}

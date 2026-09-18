@@ -1,0 +1,81 @@
+package com.example.storage_node.controller;
+
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.List;
+import java.util.Arrays;
+
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.client.RestTemplate;
+
+@RestController
+@RequestMapping("/chunks")
+public class ChunkController {
+
+    @Value("${storage.base-path}")
+    private String basePath;
+
+    @Value("${server.port}")
+    private String selfPort;
+
+    private final RestTemplate restTemplate;
+
+    public ChunkController(RestTemplate restTemplate) {
+        this.restTemplate = restTemplate;
+    }
+
+    @PutMapping("/{chunkId}")
+    public ResponseEntity<Void> storeChunk(@PathVariable String chunkId,
+            @RequestParam(required = false) String replicas,
+            @RequestBody byte[] data) throws IOException {
+        Path dir = Paths.get(basePath);
+        Files.createDirectories(dir);
+        Files.write(dir.resolve(chunkId), data);
+
+        if (replicas != null && !replicas.isBlank()) {
+            List<String> replicaUrls = Arrays.asList(replicas.split(","));
+            for (String url : replicaUrls) {
+                if (url.contains(getSelfIdentifier()))
+                    continue;
+
+                // "localhost" only resolves correctly for external clients (Postman).
+                // From inside a container, sibling containers must be reached via the host.
+                String internalUrl = url.replace("localhost", "host.docker.internal");
+
+                try {
+                    restTemplate.put(internalUrl + "/chunks/" + chunkId + "/internal", data);
+                } catch (Exception e) {
+                    System.err.println("Replication to " + internalUrl + " failed: " + e.getMessage());
+                }
+            }
+        }
+
+        return ResponseEntity.ok().build();
+    }
+
+    @PutMapping("/{chunkId}/internal")
+    public ResponseEntity<Void> storeChunkInternal(@PathVariable String chunkId,
+            @RequestBody byte[] data) throws IOException {
+        Path dir = Paths.get(basePath);
+        Files.createDirectories(dir);
+        Files.write(dir.resolve(chunkId), data);
+        return ResponseEntity.ok().build();
+    }
+
+    @GetMapping("/{chunkId}")
+    public ResponseEntity<byte[]> getChunk(@PathVariable String chunkId) throws IOException {
+        Path file = Paths.get(basePath).resolve(chunkId);
+        if (!Files.exists(file)) {
+            return ResponseEntity.notFound().build();
+        }
+        return ResponseEntity.ok(Files.readAllBytes(file));
+    }
+
+    private String getSelfIdentifier() {
+        return ":" + selfPort;
+    }
+}
