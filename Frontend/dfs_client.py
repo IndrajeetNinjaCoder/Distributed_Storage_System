@@ -10,6 +10,7 @@ Requires: pip install requests
 
 import sys
 import os
+import hashlib
 import requests
 
 METADATA_SERVICE = "http://localhost:8090"
@@ -52,7 +53,16 @@ def upload(file_path: str, chunk_size: int = DEFAULT_CHUNK_SIZE):
 
             r = requests.put(put_url, data=data)
             r.raise_for_status()
-            print(f"  Chunk {chunk['chunkIndex']} ({len(data)} bytes) -> {primary_url}  OK")
+            checksum = r.text.strip()
+
+            # report the checksum back to Metadata Service for this chunk
+            requests.patch(
+                f"{METADATA_SERVICE}/files/{file_id}/chunks/{chunk_id}/checksum",
+                json={"checksum": checksum},
+            ).raise_for_status()
+
+            print(f"  Chunk {chunk['chunkIndex']} ({len(data)} bytes) -> {primary_url}  "
+                  f"checksum {checksum[:12]}...  OK")
 
     # 3. Mark the upload complete
     r = requests.post(f"{METADATA_SERVICE}/files/{file_id}/complete")
@@ -75,12 +85,33 @@ def download(file_id: str, output_path: str):
     with open(output_path, "wb") as out:
         for chunk in chunks:
             chunk_id = chunk["chunkId"]
-            primary_url = chunk["storageNodeUrl"]
+            urls = chunk.get("presignedUrls") or [chunk.get("storageNodeUrl")]
+            expected_checksum = chunk.get("checksum")
 
-            r = requests.get(f"{primary_url}/chunks/{chunk_id}")
-            r.raise_for_status()
+            r = None
+            last_error = None
+            for url in urls:
+                try:
+                    candidate = requests.get(url, timeout=5)
+                    candidate.raise_for_status()
+                    r = candidate
+                    break
+                except Exception as e:
+                    last_error = e
+                    continue
+
+            if r is None:
+                raise RuntimeError(f"Chunk {chunk['chunkIndex']} unreachable on all "
+                                    f"{len(urls)} replica(s): {last_error}")
+
             out.write(r.content)
-            print(f"  Chunk {chunk['chunkIndex']} ({len(r.content)} bytes) <- {primary_url}  OK")
+
+            actual_checksum = hashlib.sha256(r.content).hexdigest()
+            if expected_checksum and actual_checksum != expected_checksum:
+                print(f"  Chunk {chunk['chunkIndex']} CHECKSUM MISMATCH! "
+                      f"expected {expected_checksum[:12]}... got {actual_checksum[:12]}...")
+            else:
+                print(f"  Chunk {chunk['chunkIndex']} ({len(r.content)} bytes)  checksum OK")
 
     print(f"\nDownload complete: {output_path}")
 

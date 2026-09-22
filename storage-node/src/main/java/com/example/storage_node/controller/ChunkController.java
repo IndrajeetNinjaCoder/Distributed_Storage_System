@@ -4,13 +4,18 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.List;
 import java.util.Arrays;
+import java.util.HexFormat;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.client.RestTemplate;
+
+import com.example.storage_node.util.PresignedUrlSigner;
 
 @RestController
 @RequestMapping("/chunks")
@@ -23,27 +28,28 @@ public class ChunkController {
     private String selfPort;
 
     private final RestTemplate restTemplate;
+    private final PresignedUrlSigner urlSigner;
 
-    public ChunkController(RestTemplate restTemplate) {
+    public ChunkController(RestTemplate restTemplate, PresignedUrlSigner urlSigner) {
         this.restTemplate = restTemplate;
+        this.urlSigner = urlSigner;
     }
 
     @PutMapping("/{chunkId}")
-    public ResponseEntity<Void> storeChunk(@PathVariable String chunkId,
-            @RequestParam(required = false) String replicas,
-            @RequestBody byte[] data) throws IOException {
+    public ResponseEntity<String> storeChunk(@PathVariable String chunkId,
+                                              @RequestParam(required = false) String replicas,
+                                              @RequestBody byte[] data) throws IOException {
         Path dir = Paths.get(basePath);
         Files.createDirectories(dir);
         Files.write(dir.resolve(chunkId), data);
 
+        String checksum = computeChecksum(data);
+
         if (replicas != null && !replicas.isBlank()) {
             List<String> replicaUrls = Arrays.asList(replicas.split(","));
             for (String url : replicaUrls) {
-                if (url.contains(getSelfIdentifier()))
-                    continue;
+                if (url.contains(getSelfIdentifier())) continue;
 
-                // "localhost" only resolves correctly for external clients (Postman).
-                // From inside a container, sibling containers must be reached via the host.
                 String internalUrl = url.replace("localhost", "host.docker.internal");
 
                 try {
@@ -54,12 +60,12 @@ public class ChunkController {
             }
         }
 
-        return ResponseEntity.ok().build();
+        return ResponseEntity.ok(checksum);
     }
 
     @PutMapping("/{chunkId}/internal")
     public ResponseEntity<Void> storeChunkInternal(@PathVariable String chunkId,
-            @RequestBody byte[] data) throws IOException {
+                                                     @RequestBody byte[] data) throws IOException {
         Path dir = Paths.get(basePath);
         Files.createDirectories(dir);
         Files.write(dir.resolve(chunkId), data);
@@ -67,7 +73,16 @@ public class ChunkController {
     }
 
     @GetMapping("/{chunkId}")
-    public ResponseEntity<byte[]> getChunk(@PathVariable String chunkId) throws IOException {
+    public ResponseEntity<byte[]> getChunk(@PathVariable String chunkId,
+                                            @RequestParam(required = false) Long expires,
+                                            @RequestParam(required = false) String sig) throws IOException {
+
+        if (expires != null && sig != null) {
+            if (!urlSigner.isValid(chunkId, expires, sig)) {
+                return ResponseEntity.status(403).build();
+            }
+        }
+
         Path file = Paths.get(basePath).resolve(chunkId);
         if (!Files.exists(file)) {
             return ResponseEntity.notFound().build();
@@ -77,5 +92,15 @@ public class ChunkController {
 
     private String getSelfIdentifier() {
         return ":" + selfPort;
+    }
+
+    private String computeChecksum(byte[] data) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest(data);
+            return HexFormat.of().formatHex(hash);
+        } catch (NoSuchAlgorithmException e) {
+            throw new RuntimeException(e);
+        }
     }
 }

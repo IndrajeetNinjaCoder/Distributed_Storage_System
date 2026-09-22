@@ -2,8 +2,10 @@ package com.example.metadata_service;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.scheduling.annotation.EnableScheduling;
 
 @SpringBootApplication
+@EnableScheduling
 public class MetadataServiceApplication {
 
 	public static void main(String[] args) {

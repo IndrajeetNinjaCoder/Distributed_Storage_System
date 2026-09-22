@@ -1,5 +1,6 @@
 package com.example.metadata_service.controller;
 
+import com.example.metadata_service.dto.ChecksumUpdateRequest;
 import com.example.metadata_service.dto.FileDownloadResponse;
 import com.example.metadata_service.dto.FileUploadRequest;
 import com.example.metadata_service.dto.FileUploadResponse;
@@ -25,7 +26,14 @@ public class FileController {
     }
 
     @GetMapping("/{fileId}")
-        public FileDownloadResponse downloadFile(@PathVariable String fileId) {
-            return fileService.getFileForDownload(fileId);
-        }
+    public FileDownloadResponse downloadFile(@PathVariable String fileId) {
+        return fileService.getFileForDownload(fileId);
+    }
+
+    @PatchMapping("/{fileId}/chunks/{chunkId}/checksum")
+    public void updateChecksum(@PathVariable String fileId,
+                            @PathVariable String chunkId,
+                            @RequestBody ChecksumUpdateRequest request) {
+        fileService.updateChunkChecksum(chunkId, request.getChecksum());
+    }
 }

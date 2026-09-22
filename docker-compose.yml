@@ -1,0 +1,106 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: dfs-postgres
+    environment:
+      POSTGRES_DB: DFS
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: yourpassword
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  eureka-server:
+    build: ./eureka-server
+    container_name: eureka-server
+    ports:
+      - "8761:8761"
+
+  storage-node-1:
+    build: ./storage-node
+    container_name: storage-node-1
+    environment:
+      SERVER_PORT: 9001
+      EUREKA_INSTANCE_HOSTNAME: localhost
+      EUREKA_URL: http://eureka-server:8761/eureka/
+      PRESIGNED_SECRET: my-dev-secret-change-in-production
+    ports:
+      - "9001:9001"
+    depends_on:
+      - eureka-server
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  storage-node-2:
+    build: ./storage-node
+    container_name: storage-node-2
+    environment:
+      SERVER_PORT: 9002
+      EUREKA_INSTANCE_HOSTNAME: localhost
+      EUREKA_URL: http://eureka-server:8761/eureka/
+      PRESIGNED_SECRET: my-dev-secret-change-in-production
+    ports:
+      - "9002:9002"
+    depends_on:
+      - eureka-server
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  storage-node-3:
+    build: ./storage-node
+    container_name: storage-node-3
+    environment:
+      SERVER_PORT: 9003
+      EUREKA_INSTANCE_HOSTNAME: localhost
+      EUREKA_URL: http://eureka-server:8761/eureka/
+      PRESIGNED_SECRET: my-dev-secret-change-in-production
+    ports:
+      - "9003:9003"
+    depends_on:
+      - eureka-server
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  storage-node-4:
+    build: ./storage-node
+    container_name: storage-node-4
+    environment:
+      SERVER_PORT: 9004
+      EUREKA_INSTANCE_HOSTNAME: localhost
+      EUREKA_URL: http://eureka-server:8761/eureka/
+      PRESIGNED_SECRET: my-dev-secret-change-in-production
+    ports:
+      - "9004:9004"
+    depends_on:
+      - eureka-server
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  metadata-service:
+    build: ./metadata-service
+    container_name: metadata-service
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/DFS
+      DB_USERNAME: postgres
+      DB_PASSWORD: yourpassword
+      EUREKA_URL: http://eureka-server:8761/eureka/
+      PRESIGNED_SECRET: my-dev-secret-change-in-production
+      RUNNING_IN_DOCKER: "true"
+    ports:
+      - "8090:8090"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      eureka-server:
+        condition: service_started
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+volumes:
+  postgres-data:

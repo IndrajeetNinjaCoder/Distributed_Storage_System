@@ -1,23 +1,91 @@
-1. Implement real replication on upload
+1. Implement real replication on upload		-> (DOne)
 Right now replicaLocations records 3 target nodes, but only the primary actually receives bytes when a client PUTs a chunk. Update the Storage Node's PUT endpoint so that after saving the chunk locally, it forwards (replicates) the same bytes to the other nodes in the replica list, called via RestTemplate/WebClient. This is the single most important remaining piece — it's what makes this an actual distributed storage system rather than just placement logic.
 
-2. Add checksums for chunk integrity
+2. Add checksums for chunk integrity		-> (DOne)
 When a chunk is stored (on the primary, before or after replicating), compute a SHA-256 checksum of the bytes and save it to the Chunk entity. On download, after fetching a chunk, verify its checksum matches — this proves you can detect corruption, a genuine talking point for interviews.
 
-3. Build a real upload/download client script
+3. Build a real upload/download client script	-> (DOne)
 Test the full round trip with a real file instead of manual byte pastes in Postman. Write a small script (Python or Java) that reads a real image/video from disk, calls POST /files, splits the file into chunk-sized pieces, PUTs each to its assigned node, calls /complete, then reverses the process on download and reassembles the original file. Verify the reassembled file matches the original byte-for-byte.
 
-4. Build the repair job for dead nodes
+4. Build the repair job for dead nodes		-> (DOne)
 Implement a Spring @Scheduled job in Metadata Service that periodically checks each chunk's replicaLocations against currently active Eureka nodes. If a node is DEAD, pick a new target via the hash ring, copy the chunk's bytes from a surviving replica to the new node, and update replicaLocations. Test it by running `docker stop storage-node-2` and confirming the job detects and repairs affected chunks.
 
-5. Add presigned URLs
+5. Add presigned URLs				-> (DOne)
 Implement presigned URL generation (HMAC-SHA256 signed, time-limited) for chunk access, so a client doesn't need direct trust with storage nodes. Add signature + expiry verification on the Storage Node's GET endpoint before it serves bytes.
 
-6. Docker Compose for the full cluster
+6. Docker Compose for the full cluster		-> (DOne)
 Write a docker-compose.yml that starts Eureka Server, Metadata Service, Postgres, and all 4 Storage Node instances with one command (`docker compose up`), replacing your current manual multi-terminal/multi-docker-run workflow. This is also expected groundwork before load testing.
 
-7. Load testing
+7. Load testing					-> (DOne)
 Use k6 (or JMeter) to script concurrent uploads/downloads against the cluster. Capture throughput and latency numbers, then specifically test resilience: kill a node mid-test and confirm the system keeps serving reads via other replicas. Record the numbers — this becomes a real, defensible section of your README.
 
-8. Unit/integration tests for placement and repair
+8. Unit/integration tests for placement and repair	-> (DOne)
 Add JUnit + Mockito tests for the consistent hash ring logic (placement correctness, distinct replicas, ring rebuild behavior) and the repair job. This is lower effort than it sounds since the hash ring is a pure, easily-testable class, and it's a strong signal in an interview that you validated your own algorithm.
+
+
+
+
+
+
+---------------------------------------------------------------------------
+
+Phase 1 — Authentication
+Add Spring Security + JWT dependencies
+User entity + repository
+JWT utility class (generate/validate tokens)
+Password hashing (BCrypt)
+Register + login endpoints
+JWT authentication filter
+Security filter chain configuration
+Add file ownership (ownerId on FileMetadata)
+Stamp uploads with the owner
+Enforce ownership on download/list
+Add a "list my files" endpoint
+Update Python client + k6 script to send a JWT
+Re-verify existing features (repair, checksums, presigned URLs) still work under auth
+Phase 2 — Frontend
+Scaffold the frontend project (framework decision needed)
+Login/register screens
+File list screen
+Upload flow (client-side chunking, same logic as the Python client)
+Download flow (failover across replicas, checksum verification)
+CORS configuration for the frontend's origin
+Phase 3 — Verification & docs
+End-to-end manual test with two separate users
+Update README with auth + frontend sections
+
+Before we start on step 1, two quick decisions:
+
+Frontend: plain HTML/JS, or React?
+Login: email + password, or something simpler like just a username for this portfolio scope?
+
+
+
+
+
+
+
+
+
+Storage-node
+
+Questions:
+1. is uploaded file devided into chunks ? why ?
+2. is entire file and all chunks being saved on another node also (another port)
+3. what exactly node is ?
+4. where the file is being saved ?
+5. from where the secret key is coming ?
+6. what this presigned url do ?
+
+
+
+
+
+
+
+
+
+
+
+
+

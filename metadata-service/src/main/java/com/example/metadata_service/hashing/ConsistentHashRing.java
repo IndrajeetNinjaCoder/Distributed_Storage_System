@@ -2,8 +2,8 @@ package com.example.metadata_service.hashing;
 
 import org.springframework.stereotype.Component;
 import java.security.MessageDigest;
+import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.SortedMap;
-import java.util.TreeMap;
 import java.util.List;
 import java.util.LinkedHashSet;
 import java.util.Set;
@@ -12,7 +12,7 @@ import java.util.Set;
 public class ConsistentHashRing {
 
     private static final int VIRTUAL_NODES = 150;
-    private final SortedMap<Long, String> ring = new TreeMap<>();
+    private final ConcurrentSkipListMap<Long, String> ring = new ConcurrentSkipListMap<>();
 
     public void addNode(String nodeId) {
         for (int i = 0; i < VIRTUAL_NODES; i++) {
@@ -25,7 +25,7 @@ public class ConsistentHashRing {
         ring.entrySet().removeIf(entry -> entry.getValue().equals(nodeId));
     }
 
-    public void rebuild(List<String> activeNodeIds) {
+    public synchronized void rebuild(List<String> activeNodeIds) {
         ring.clear();
         activeNodeIds.forEach(this::addNode);
     }
